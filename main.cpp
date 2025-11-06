@@ -1,107 +1,84 @@
-#include <iostream>
-#include <memory>
+#include "hue/HueController.h"
+#include "ndi/NDIController.h"
+#include "utils/SignalHandler.h"
 #include <csignal>
-#include <atomic>
-#include <huestream/config/Config.h>
-#include <huestream/HueStream.h>
-#include "effects/FadeEffect.h"
+#include <iostream>
 
-using namespace huestream;
-
-// Global flag for signal handling
-std::atomic<bool> g_shutdownRequested(false);
-
-// Signal handler for Ctrl+C
-void signalHandler(int signum) {
-    std::cout << "\n\nCtrl+C detected! Initiating graceful shutdown..." << std::endl;
-    g_shutdownRequested = true;
-}
-
-void connectToBridge(std::shared_ptr<HueStream> huestream) {
-    std::cout << "\nConnecting to bridge..." << std::endl;
-
-    huestream->ConnectBridge();
-
-    while (!huestream->IsStreamableBridgeLoaded() && !huestream->IsBridgeStreaming()) {
-        auto bridge = huestream->GetLoadedBridge();
-
-        std::cout << "Bridge status: " << bridge->GetStatusTag() << std::endl;
-
-        if (bridge->GetStatus() == BRIDGE_INVALID_GROUP_SELECTED) {
-            std::cout << "Selecting first entertainment group..." << std::endl;
-            huestream->SelectGroup(bridge->GetGroups()->at(0));
-        } else if (bridge->GetStatus() != BRIDGE_READY && bridge->GetStatus() != BRIDGE_STREAMING) {
-            std::cout << "No streamable bridge configured: " << bridge->GetStatusTag() << std::endl;
-            std::cout << "Press Enter to retry..." << std::endl;
-            std::cin.get();
-            huestream->ConnectBridge();
-        }
-    }
-
-    std::cout << "Bridge connection completed!" << std::endl;
+void displayMainMenu() {
+  std::cout << "\n================================" << std::endl;
+  std::cout << "  Hue Light Control System" << std::endl;
+  std::cout << "================================" << std::endl;
+  std::cout << "Choose debug mode:" << std::endl;
+  std::cout << "1. Hue Debug (Light Fading)" << std::endl;
+  std::cout << "2. NDI Debug (TouchDesigner)" << std::endl;
+  std::cout << "0. Exit" << std::endl;
+  std::cout << "\nEnter your choice: ";
 }
 
 int main(int argc, char *argv[]) {
-    // Register signal handler for Ctrl+C
-    std::signal(SIGINT, signalHandler);
+  // Register signal handler for Ctrl+C
+  SignalHandler::setup();
 
-    std::cout << "Hue Light Effects" << std::endl;
-    std::cout << "====================" << std::endl;
-    std::cout << "Choose an effect:" << std::endl;
-    std::cout << "1. Fade In/Out" << std::endl;
+  int choice = -1;
 
-    std::cout << "Enter your choice (1): ";
+  while (choice != 0) {
+    displayMainMenu();
 
-    int choice;
-    std::cin >> choice;
-
-    if (choice != 1) {
-        std::cout << "Invalid choice. Exiting..." << std::endl;
-        return 1;
+    if (!(std::cin >> choice)) {
+      std::cin.clear();
+      std::cin.ignore(10000, '\n');
+      std::cout << "Invalid input. Please enter a number." << std::endl;
+      continue;
     }
+
+    std::cin.ignore(10000, '\n'); // Clear input buffer
 
     try {
-        // Setup HueStream
-        std::cout << "Setting up HueStream library..." << std::endl;
-        auto config = std::make_shared<Config>("LightEffects", "MacBook", PersistenceEncryptionKey("secret_key"));
-        auto huestream = std::make_shared<HueStream>(config);
-
-        huestream->RegisterFeedbackCallback([](const FeedbackMessage &message) {
-            std::cout << "[" << message.GetId() << "] " << message.GetTag() << std::endl;
-            if (message.GetId() == FeedbackMessage::ID_DONE_COMPLETED) {
-                std::cout << "Connected to bridge with ip: " << message.GetBridge()->GetIpAddress() << std::endl;
-            }
-            if (message.GetMessageType() == FeedbackMessage::FEEDBACK_TYPE_USER) {
-                std::cout << message.GetUserMessage() << std::endl;
-            }
-        });
-
-        std::cout << "HueStream library initialized" << std::endl;
-
-        // Connect to bridge
-        connectToBridge(huestream);
-
-        // Play selected effect
-        if (huestream->IsStreamableBridgeLoaded() || huestream->IsBridgeStreaming()) {
-            if (choice == 1) {
-                std::cout << "\nStarting Fade In/Out effect..." << std::endl;
-                FadeEffect fadeEffect(huestream);
-                fadeEffect.play(g_shutdownRequested);
-            }
-        } else {
-            std::cout << "\nNo streamable bridge available" << std::endl;
-            std::cout << "Configure an entertainment area in the Philips Hue app" << std::endl;
+      switch (choice) {
+      case 1: {
+        std::cout << "\n=== Starting Hue Debug Mode ===" << std::endl;
+        HueController hueController;
+        if (hueController.initialize()) {
+          hueController.runFadeEffect();
         }
+        break;
+      }
 
-        // Shutdown
-        std::cout << "\nShutting down HueStream library..." << std::endl;
-        huestream->ShutDown();
-        std::cout << "Shutdown completed!" << std::endl;
+      case 2: {
+        std::cout << "\n=== Starting NDI Debug Mode ===" << std::endl;
+        NDIController ndiController;
+        if (ndiController.initialize("TouchDesigner")) {
+          ndiController.runDebugMode();
+        }
+        break;
+      }
 
-    } catch (const std::exception& e) {
-        std::cerr << "Error: " << e.what() << std::endl;
-        return 1;
+      case 0:
+        std::cout << "\nExiting application..." << std::endl;
+        break;
+
+      default:
+        std::cout << "Invalid choice. Please select 1, 2, or 0." << std::endl;
+        break;
+      }
+
+      if (choice != 0 && !SignalHandler::isShutdownRequested()) {
+        std::cout << "\nPress Enter to return to main menu...";
+        std::cin.get();
+      }
+
+    } catch (const std::exception &e) {
+      std::cerr << "Error: " << e.what() << std::endl;
+      std::cout << "Press Enter to continue...";
+      std::cin.get();
     }
 
-    return 0;
+    if (SignalHandler::isShutdownRequested()) {
+      std::cout << "\nShutdown requested. Exiting..." << std::endl;
+      break;
+    }
+  }
+
+  std::cout << "Application terminated." << std::endl;
+  return 0;
 }

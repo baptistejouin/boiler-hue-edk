@@ -13,7 +13,7 @@ FadeEffect::~FadeEffect() {
     stop();
 }
 
-void FadeEffect::play(std::atomic<bool>& shutdownRequested) {
+void FadeEffect::play(std::function<bool()> shouldShutdown) {
     std::cout << "\n🌟 Starting fade effect (0% → 100% → 0% in 4 seconds, looping)..." << std::endl;
     std::cout << "   Press Ctrl+C to stop gracefully..." << std::endl;
     
@@ -44,9 +44,9 @@ void FadeEffect::play(std::atomic<bool>& shutdownRequested) {
     const int steps = fadeDuration_ms / updateInterval_ms;  // 100 steps
     
     // Loop fade effect until Ctrl+C
-    while (!shutdownRequested) {
+    while (!shouldShutdown()) {
         // Fade UP from 0 to 1 over 2 seconds
-        for (int step = 0; step <= steps && !shutdownRequested; step++) {
+        for (int step = 0; step <= steps && !shouldShutdown(); step++) {
             double intensity = static_cast<double>(step) / steps;
             
             // Apply intensity to the color
@@ -68,7 +68,7 @@ void FadeEffect::play(std::atomic<bool>& shutdownRequested) {
         }
         
         // Fade DOWN from 1 to 0 over 2 seconds
-        for (int step = steps; step >= 0 && !shutdownRequested; step--) {
+        for (int step = steps; step >= 0 && !shouldShutdown(); step--) {
             double intensity = static_cast<double>(step) / steps;
             
             // Apply intensity to the color

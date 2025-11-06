@@ -16,6 +16,12 @@ set(BUILD_WRAPPERS OFF CACHE BOOL "Build wrappers" FORCE)
 set(BUILD_TEST_COV OFF CACHE BOOL "Build tests with coverage" FORCE)
 set(LIB_BUILD_MODE "STATIC" CACHE STRING "Library build mode" FORCE)
 
+# Configure NDI path
+# https://docs.ndi.video/all/developing-with-ndi/sdk/dynamic-loading-of-ndi-libraries
+# https://ndi.video/for-developers/ndi-sdk/
+set(NDI_INCLUDE_DIR "./lib/ndi/include" CACHE PATH "NDI include dir" FORCE)
+set(NDI_LIBRARY_DIR "./lib/ndi/bin" CACHE PATH "NDI library dir" FORCE)
+
 # Download and build EDK
 FetchContent_Declare(
     philips_edk
@@ -31,6 +37,9 @@ FetchContent_MakeAvailable(philips_edk)
 file(GLOB SOURCES
     "main.cpp"
     "effects/*.cpp"
+    "hue/*.cpp"
+    "ndi/*.cpp"
+    "utils/*.cpp"
 )
 
 add_executable(${PROJECT_NAME} ${SOURCES})
@@ -39,6 +48,26 @@ add_executable(${PROJECT_NAME} ${SOURCES})
 target_include_directories(${PROJECT_NAME} PRIVATE 
     ${philips_edk_SOURCE_DIR}/libhuestream/include
 )
+
+# Construct full path to NDI dylib
+find_library(NDI_LIB
+    NAMES ndi libndi
+    HINTS ${NDI_LIBRARY_DIR}
+)
+
+# Check if the file exists
+if(NOT EXISTS "${NDI_LIB}")
+    message("FATAL: NDI library not found. Please install it before")
+else()
+    message(STATUS "Found NDI library at: ${NDI_LIB}")
+endif()
+
+target_include_directories(${PROJECT_NAME} PRIVATE
+    ${NDI_INCLUDE_DIR}
+)
+
+# Link it to your target
+target_link_libraries(${PROJECT_NAME} PRIVATE ${NDI_LIB})
 
 # Link against the EDK library and its dependencies
 target_link_libraries(${PROJECT_NAME} PRIVATE 
@@ -67,6 +96,6 @@ elseif(APPLE)
     if(IDN2_LIBRARY)
         target_link_libraries(${PROJECT_NAME} PRIVATE ${IDN2_LIBRARY})
     else()
-        message(WARNING "libidn2 not found. Please install it before")
+        message("FATAL: libidn2 not found. Please install it before")
     endif()
 endif()

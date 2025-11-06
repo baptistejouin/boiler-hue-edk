@@ -2,7 +2,6 @@
 #define FADE_EFFECT_H
 
 #include <memory>
-#include <atomic>
 #include <huestream/HueStream.h>
 #include <huestream/effect/effects/ManualEffect.h>
 #include <huestream/common/data/Color.h>
@@ -16,7 +15,7 @@ public:
     FadeEffect(std::shared_ptr<huestream::HueStream> huestream);
     ~FadeEffect();
     
-    void play(std::atomic<bool>& shutdownRequested);
+    void play(std::function<bool()> shouldShutdown);
     void stop();
 };
 
