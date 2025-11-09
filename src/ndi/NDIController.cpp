@@ -2,6 +2,7 @@
 #include "../utils/SignalHandler.h"
 #include <chrono>
 #include <iostream>
+#include <opencv2/opencv.hpp>
 #include <thread>
 
 NDIController::NDIController()
@@ -131,18 +132,57 @@ void NDIController::runDebugMode() {
   std::cout << "\n=== NDI Debug Mode Active ===" << std::endl;
   std::cout << "Source: " << m_sourceName << std::endl;
   std::cout << "Press Ctrl+C to stop" << std::endl;
-
   int frameCount = 0;
   while (!SignalHandler::isShutdownRequested()) {
-    processFrame();
+    displayFrameWithAverageColor(); // Call the new function
     frameCount++;
-
     if (frameCount % 30 == 0) {
       std::cout << "Processed " << frameCount << " frames..." << std::endl;
     }
   }
-
   std::cout << "\nTotal frames processed: " << frameCount << std::endl;
+}
+
+void NDIController::displayFrameWithAverageColor() {
+  NDIlib_video_frame_v2_t videoFrame;
+  switch (NDIlib_recv_capture_v2(m_recvInstance, &videoFrame, nullptr, nullptr,
+                                 100)) {
+  case NDIlib_frame_type_video: {
+    // Convert NDI frame to OpenCV Mat
+    cv::Mat frame(videoFrame.yres, videoFrame.xres, CV_8UC4, videoFrame.p_data);
+    cv::cvtColor(frame, frame,
+                 cv::COLOR_BGRA2BGR); // Convert BGRA to BGR for display
+
+    // Calculate average color
+    cv::Scalar avgColor = cv::mean(frame);
+    double avgB = avgColor[0];
+    double avgG = avgColor[1];
+    double avgR = avgColor[2];
+
+    // Overlay average color text on the frame
+    std::string avgColorText =
+        cv::format("Avg (B, G, R): (%.1f, %.1f, %.1f)", avgB, avgG, avgR);
+    cv::putText(frame, avgColorText, cv::Point(10, 30),
+                cv::FONT_HERSHEY_SIMPLEX, 0.7, cv::Scalar(255, 255, 255), 2);
+
+    // Display the frame
+    cv::imshow("NDI Video Stream", frame);
+    cv::waitKey(1); // Required to update the window
+
+    // Free the video frame
+    NDIlib_recv_free_video_v2(m_recvInstance, &videoFrame);
+    break;
+  }
+  case NDIlib_frame_type_none:
+    // No data
+    break;
+  case NDIlib_frame_type_error:
+    std::cerr << "Error receiving frame" << std::endl;
+    break;
+  default:
+    // Ignore audio/metadata
+    break;
+  }
 }
 
 void NDIController::shutdown() {
